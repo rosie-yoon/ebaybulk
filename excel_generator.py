@@ -1,3 +1,4 @@
+import streamlit as st
 import pandas as pd
 import re
 from database import get_user, save_generation_history
@@ -10,13 +11,25 @@ SCOPES = ['https://www.googleapis.com/auth/spreadsheets.readonly']
 
 
 def get_google_sheets_client():
-    """Google Sheets API 클라이언트 생성"""
+    """Google Sheets API 클라이언트 생성 - 로컬/클라우드 호환"""
     try:
-        creds = Credentials.from_service_account_file('service_account.json', scopes=SCOPES)
-        client = gspread.authorize(creds)
-        return client
-    except FileNotFoundError:
-        raise Exception("service_account.json 파일이 없습니다.")
+        # Streamlit Cloud 환경 (Secrets 사용)
+        if hasattr(st, 'secrets') and 'gcp_service_account' in st.secrets:
+            creds_dict = dict(st.secrets["gcp_service_account"])
+            # private_key의 줄바꿈 문자 처리
+            if "private_key" in creds_dict:
+                creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+
+            creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
+            client = gspread.authorize(creds)
+            return client
+
+        # 로컬 환경 (파일 사용)
+        else:
+            creds = Credentials.from_service_account_file('service_account.json', scopes=SCOPES)
+            client = gspread.authorize(creds)
+            return client
+
     except Exception as e:
         raise Exception(f"Google Sheets API 인증 실패: {str(e)}")
 
