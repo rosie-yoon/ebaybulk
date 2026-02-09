@@ -16,8 +16,8 @@ def get_env_var(key):
     except:
         return os.getenv(key)
 
-SUPABASE_URL = get_env_var("https://tipmokkbniwminhxusuv.supabase.co")
-SUPABASE_KEY = get_env_var("sb_publishable_ovsBwsqVqX568LPrrBQ6Aw_qAcf24in")
+SUPABASE_URL = get_env_var("SUPABASE_URL")
+SUPABASE_KEY = get_env_var("SUPABASE_KEY")
 
 if not SUPABASE_URL or not SUPABASE_KEY:
     raise RuntimeError(
