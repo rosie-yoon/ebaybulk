@@ -324,9 +324,9 @@ if st.button("🚀 Excel 생성 및 다운로드", type="primary", use_container
             df_result = pd.read_excel(io.BytesIO(excel_data_copy), dtype=str)
 
             col_r1, col_r2, col_r3 = st.columns(3)
-            col_r1.metric("총 행 수", len(df_result))
-            col_r2.metric("부모/단품", len(df_result[df_result.iloc[:, 0] == 'Add']))
-            col_r3.metric("자식", len(df_result[df_result.iloc[:, 0].isna() | (df_result.iloc[:, 0] == '')]))
+            col_r1.metric("Total", len(df_result))
+            col_r2.metric("PSKU", len(df_result[df_result.iloc[:, 0] == 'Add']))
+            col_r3.metric("SKU", len(df_result[df_result.iloc[:, 0].isna() | (df_result.iloc[:, 0] == '')]))
 
             # 다운로드 버튼 (가장 중요!)
             st.download_button(
@@ -346,7 +346,7 @@ if st.button("🚀 Excel 생성 및 다운로드", type="primary", use_container
                 variation_groups = df_result[df_result.iloc[:, 5] == 'Variation'] if len(
                     df_result.columns) > 5 else pd.DataFrame()
                 if len(variation_groups) > 0:
-                    st.success(f"✅ {len(variation_groups)}개 베리에이션 자식 행 확인")
+                    st.success(f"✅ {len(variation_groups)}개 베리에이션 SKU 확인")
 
             # st.balloons() 제거됨 - 풍선 효과 없음
 

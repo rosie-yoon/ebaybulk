@@ -393,7 +393,7 @@ def validate_ebay_data(ebay_df, category_map):
     for idx, row in add_rows.iterrows():
         for field in required_fields:
             if not str(row.get(field, '')).strip():
-                errors.append(f"부모 행 {idx + 2}: {field} 누락")
+                errors.append(f"PSKU 행 {idx + 2}: {field} 누락")
 
     # CAT 탭 카테고리 ID 검증
     if category_map:
@@ -406,9 +406,9 @@ def validate_ebay_data(ebay_df, category_map):
     var_rows = ebay_df[ebay_df['Relationship'] == 'Variation']
     for idx, row in var_rows.iterrows():
         if not str(row.get('Custom label (SKU)', '')).strip():
-            errors.append(f"자식 행 {idx + 2}: SKU 누락")
+            errors.append(f"SKU 행 {idx + 2}: SKU 누락")
         if not str(row.get('Start price', '')).strip():
-            errors.append(f"자식 행 {idx + 2}: 가격 누락")
+            errors.append(f"SKU 행 {idx + 2}: 가격 누락")
 
     return errors
 
