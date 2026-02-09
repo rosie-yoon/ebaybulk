@@ -1,0 +1,36 @@
+# 보안 파일 (절대 업로드 금지)
+.env
+service_account.json
+
+# Python 가상환경
+venv/
+.venv/
+env/
+ENV/
+
+# Python 캐시 및 임시 파일
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# 생성된 파일들 (실제 데이터 보호)
+*.xlsx
+*.xls
+*.csv
+ebay_bulk_*.xlsx
+
+# IDE 및 시스템 파일
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# 로그 및 임시 파일
+*.log
+*.tmp
+test_gsheet.py
