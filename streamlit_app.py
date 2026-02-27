@@ -71,7 +71,7 @@ def show_settings_modal():
                         )
 
                     st.markdown("#### 🖼️ 이미지 설정")
-                    col3, col4 = st.columns(2)
+                    col3, col4, col5 = st.columns(3)
                     with col3:
                         image_domain = st.text_input(
                             "이미지 도메인*",
@@ -84,16 +84,23 @@ def show_settings_modal():
                             value=user.get('image_url_pattern', '/{sku}.jpg'),
                             help="{sku}는 상품 SKU로 자동 치환됩니다"
                         )
+                    with col5:
+                        shop_code = st.text_input(
+                            "샵코드*",
+                            value=user.get('shop_code', ''),
+                            placeholder="COSBLAH",
+                            help="첫 번째 이미지에 사용됩니다 (예: A0001_C_COSBLAH.jpg)"
+                        )
 
                     st.markdown("#### ⚙️ 기본값")
-                    col5, col6 = st.columns(2)
-                    with col5:
+                    col6, col7 = st.columns(2)
+                    with col6:
                         default_quantity = st.number_input(
                             "기본 재고",
                             value=user.get('default_quantity', 999),
                             min_value=1
                         )
-                    with col6:
+                    with col7:
                         default_description = st.text_area(
                             "기본 상품 설명",
                             value=user.get('default_description', ''),
@@ -143,6 +150,7 @@ def show_settings_modal():
                                 "google_sheet_id": google_sheet_id,
                                 "image_domain": image_domain,
                                 "image_url_pattern": image_url_pattern,
+                                "shop_code": shop_code,  # ✅ 샵코드 추가
                                 "default_quantity": default_quantity,
                                 "default_description": default_description,
                                 "shipping_profile_name": shipping_profile_name,
@@ -173,7 +181,7 @@ def show_settings_modal():
                 )
 
             st.markdown("#### 🖼️ 이미지 설정")
-            col3, col4 = st.columns(2)
+            col3, col4, col5 = st.columns(3)
             with col3:
                 new_image_domain = st.text_input(
                     "이미지 도메인*",
@@ -185,12 +193,18 @@ def show_settings_modal():
                     value="/{sku}.jpg",
                     help="{sku}는 상품 SKU로 자동 치환됩니다"
                 )
+            with col5:
+                new_shop_code = st.text_input(
+                    "샵코드*",
+                    placeholder="COSBLAH",
+                    help="첫 번째 이미지 URL에 사용됩니다"
+                )
 
             st.markdown("#### ⚙️ 기본값")
-            col5, col6 = st.columns(2)
-            with col5:
-                new_default_quantity = st.number_input("기본 재고", value=999, min_value=1)
+            col6, col7 = st.columns(2)
             with col6:
+                new_default_quantity = st.number_input("기본 재고", value=999, min_value=1)
+            with col7:
                 new_default_description = st.text_area(
                     "기본 상품 설명",
                     value="Brand new authentic Korean product. Fast shipping worldwide.",
@@ -223,6 +237,7 @@ def show_settings_modal():
 
             if add_submitted:
                 if not all([new_name, new_google_sheet_id, new_image_domain,
+                            new_shop_code,  # ✅ 샵코드 필수 검증 추가
                             new_shipping_profile, new_return_profile, new_payment_profile]):
                     st.error("필수 항목(*)을 모두 입력해주세요.")
                 else:
@@ -232,6 +247,7 @@ def show_settings_modal():
                             "google_sheet_id": new_google_sheet_id,
                             "image_domain": new_image_domain,
                             "image_url_pattern": new_image_url_pattern,
+                            "shop_code": new_shop_code,  # ✅ 샵코드 추가
                             "default_quantity": new_default_quantity,
                             "default_description": new_default_description,
                             "shipping_profile_name": new_shipping_profile,
@@ -246,6 +262,7 @@ def show_settings_modal():
 
                     except Exception as e:
                         st.error(f"추가 실패: {str(e)}")
+
 
 
 # ===== 메인 화면 =====

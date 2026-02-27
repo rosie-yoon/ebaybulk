@@ -157,8 +157,7 @@ def convert_to_ebay_variations(bulk_df, category_map, user):
         category_id = str(first_row.get('Categoery ID', '')).strip()
         category_name = str(first_row.get('Categoery', '')).strip()
         brand = str(first_row.get('BRAND', '')).strip()
-        item_type = str(first_row.get('ITEM', '')).strip()
-        index_value = str(first_row.get('INDEX', '0')).strip()  # INDEX 컬럼 추가
+        index_value = str(first_row.get('INDEX', '0')).strip()
 
         # CAT 탭에서 카테고리 정보 조회
         cat_info = category_map.get(category_id, {})
@@ -177,10 +176,10 @@ def convert_to_ebay_variations(bulk_df, category_map, user):
             if option:
                 all_options.append(option)
 
-        # Relationship details: "Size=옵션1;옵션2;옵션3" 형식
-        relationship_details = f"{item_type}={';'.join(all_options)}" if item_type and all_options else ''
+        # ✅ 변경: Relationship details를 "OPTIONS=옵션1;옵션2;..." 형식으로 고정
+        relationship_details = f"OPTIONS={';'.join(all_options)}" if all_options else ''
 
-        # 1. 부모 행 생성 (Add) - INDEX 기반 다중 이미지
+        # 1. 부모 행 생성 (Add)
         parent_row = create_parent_row(
             psku=psku,
             product_name=product_name,
@@ -190,7 +189,7 @@ def convert_to_ebay_variations(bulk_df, category_map, user):
             condition_id=condition_id,
             relationship_details=relationship_details,
             first_price=clean_price(first_row.get('PRICE', '0')),
-            index_value=index_value,  # INDEX 전달
+            index_value=index_value,
             user=user
         )
         ebay_rows.append(parent_row)
@@ -201,6 +200,7 @@ def convert_to_ebay_variations(bulk_df, category_map, user):
             ebay_rows.append(child_row)
 
     return ebay_rows
+
 
 
 def create_parent_row(psku, product_name, category_id, category_name, brand, condition_id,
@@ -259,17 +259,16 @@ def create_parent_row(psku, product_name, category_id, category_name, brand, con
 
 
 def create_child_row(row, user):
-    """자식 행 생성 - 기존 로직 유지"""
+    """자식 행 생성 - OPTIONS 고정 형식 사용"""
 
     sku = str(row.get('SKU', '')).strip()
-    item = str(row.get('ITEM', '')).strip()
     option = str(row.get('OPTION', '')).strip()
     price = clean_price(row.get('PRICE', '0'))
 
-    # Relationship details: "Size=Blanche&Woody 400ml" 형식
-    relationship_details = f"{item}={option}" if item and option else option
+    # ✅ 변경: Relationship details를 "OPTIONS=옵션값" 형식으로 고정
+    relationship_details = f"OPTIONS={option}" if option else ''
 
-    # 자식 이미지 URL: "Blanche&Woody 400ml=https://shopeept.com/LABOH0007.jpg" 형식
+    # 자식 이미지 URL: "옵션명=이미지URL" 형식 (기존 로직 유지)
     base_image_url = generate_image_url(sku, user)
     child_image_url = f"{option}={base_image_url}" if option and base_image_url else base_image_url
 
@@ -280,12 +279,12 @@ def create_child_row(row, user):
         'Category name': '',
         'Title': '',
         'Relationship': 'Variation',
-        'Relationship details': relationship_details,
+        'Relationship details': relationship_details,  # ✅ 변경된 형식 적용
         'Schedule Time': '',
         'P:UPC': '',
         'P:EPID': '',
         'Start price': price,
-        'Quantity': str(user.get('default_quantity', 999)),  # 사용자 설정값 적용
+        'Quantity': str(user.get('default_quantity', 999)),
         'Item photo URL': child_image_url,
         'VideoID': '',
         'Condition ID': '',
@@ -320,13 +319,15 @@ def create_child_row(row, user):
     return child
 
 
+
 def generate_parent_image_urls(psku, index_value, user):
-    """INDEX 기반 부모 상품 다중 이미지 URL 생성"""
+    """INDEX 기반 부모 상품 다중 이미지 URL 생성 - 샵코드 적용"""
 
     if not psku or not user.get('image_domain'):
         return ""
 
-    domain = user['image_domain'].rstrip('/')
+    # ✅ 샵코드 가져오기
+    shop_code = user.get('shop_code', '').strip()
 
     # INDEX 값 정제 (숫자만 추출)
     try:
@@ -337,14 +338,20 @@ def generate_parent_image_urls(psku, index_value, user):
     # 이미지 URL 리스트 생성
     image_urls = []
 
-    # 1. 기본 이미지 (항상 포함)
-    base_url = generate_image_url(psku, user)
-    if base_url:
-        image_urls.append(base_url)
+    # ✅ 1. 첫 번째 이미지: PSKU_C_샵코드 형식으로 변경
+    if shop_code:
+        first_image_sku = f"{psku}_C_{shop_code}"
+        first_image_url = generate_image_url(first_image_sku, user)
+        if first_image_url:
+            image_urls.append(first_image_url)
+    else:
+        # 샵코드가 없으면 기존 방식 유지 (하위 호환성)
+        base_url = generate_image_url(psku, user)
+        if base_url:
+            image_urls.append(base_url)
 
-    # 2. 추가 이미지 (INDEX 개수만큼)
+    # 2. 추가 이미지 (INDEX 개수만큼): PSKU_D1, PSKU_D2, ... (기존 로직 유지)
     for i in range(1, index_num + 1):
-        # PSKU_D1, PSKU_D2 형태로 SKU 생성
         sub_sku = f"{psku}_D{i}"
         sub_url = generate_image_url(sub_sku, user)
         if sub_url:
@@ -352,6 +359,7 @@ def generate_parent_image_urls(psku, index_value, user):
 
     # 3. 파이프(|)로 연결 (이베이 공식 구분자)
     return '|'.join(image_urls)
+
 
 
 def generate_image_url(sku, user):
