@@ -1,0 +1,16 @@
+[
+  {
+    "id": 1,
+    "user_id": 2,
+    "file_name": "ebay_bulk_여진.xlsx",
+    "product_count": 82,
+    "created_at": "2026-03-23T22:30:34.614525"
+  },
+  {
+    "id": 2,
+    "user_id": 1,
+    "file_name": "ebay_bulk_컴포트존.xlsx",
+    "product_count": 10,
+    "created_at": "2026-03-23T23:09:46.558068"
+  }
+]

@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import re
+import os
 from database import get_user, save_generation_history
 import io
 import gspread
@@ -13,22 +14,32 @@ SCOPES = ['https://www.googleapis.com/auth/spreadsheets.readonly']
 def get_google_sheets_client():
     """Google Sheets API 클라이언트 생성 - 로컬/클라우드 호환"""
     try:
-        # Streamlit Cloud 환경 (Secrets 사용)
-        if hasattr(st, 'secrets') and 'gcp_service_account' in st.secrets:
+        # 1) 먼저 로컬 파일이 있으면 그걸 우선 사용
+        if os.path.exists("service_account.json"):
+            creds = Credentials.from_service_account_file(
+                "service_account.json",
+                scopes=SCOPES
+            )
+            return gspread.authorize(creds)
+
+        # 2) 로컬 파일이 없으면 Streamlit secrets 사용 시도
+        try:
             creds_dict = dict(st.secrets["gcp_service_account"])
-            # private_key의 줄바꿈 문자 처리
+
             if "private_key" in creds_dict:
                 creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
 
-            creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
-            client = gspread.authorize(creds)
-            return client
+            creds = Credentials.from_service_account_info(
+                creds_dict,
+                scopes=SCOPES
+            )
+            return gspread.authorize(creds)
 
-        # 로컬 환경 (파일 사용)
-        else:
-            creds = Credentials.from_service_account_file('service_account.json', scopes=SCOPES)
-            client = gspread.authorize(creds)
-            return client
+        except Exception:
+            raise Exception(
+                "service_account.json 파일이 없고, Streamlit secrets의 "
+                "'gcp_service_account' 설정도 없습니다."
+            )
 
     except Exception as e:
         raise Exception(f"Google Sheets API 인증 실패: {str(e)}")
@@ -40,7 +51,7 @@ def read_bulk_and_cat_tabs(sheet_id):
         client = get_google_sheets_client()
         spreadsheet = client.open_by_key(sheet_id)
 
-        # Bulk 탭 읽기 (INDEX 컬럼 포함)
+        # Bulk 탭 읽기
         bulk_worksheet = spreadsheet.worksheet('Bulk')
         bulk_data = bulk_worksheet.get_all_values()
 
@@ -50,7 +61,7 @@ def read_bulk_and_cat_tabs(sheet_id):
         else:
             bulk_df = pd.DataFrame()
 
-        # CAT 탭 읽기 (3컬럼: 경로, ID, Condition ID)
+        # CAT 탭 읽기
         try:
             cat_worksheet = spreadsheet.worksheet('CAT')
             cat_data = cat_worksheet.get_all_values()
@@ -60,7 +71,6 @@ def read_bulk_and_cat_tabs(sheet_id):
                 if len(row) >= 2 and row[1].strip():
                     category_path = row[0].strip()
                     category_id = row[1].strip()
-                    # C열이 있으면 사용, 없으면 기본값
                     condition_id = row[2].strip() if len(row) >= 3 else "1000-New"
 
                     category_map[category_id] = {
@@ -102,28 +112,28 @@ def generate_ebay_excel(user_id):
     ebay_rows = convert_to_ebay_variations(bulk_df, category_map, user)
     print(f"[변환] {len(ebay_rows)}개 이베이 행 생성")
 
-    # 4. DataFrame 생성 및 컬럼 정렬 (AO열까지만)
+    # 4. DataFrame 생성 및 컬럼 정렬
     ebay_df = pd.DataFrame(ebay_rows)
     ebay_columns = get_ebay_column_order()
     ebay_df = ebay_df.reindex(columns=ebay_columns, fill_value='')
 
     # 5. Excel 파일 생성
     output = io.BytesIO()
-    filename = f"ebay_bulk_{user['name']}.xlsx"
+    safe_name = re.sub(r'[^a-zA-Z0-9가-힣_-]', '_', user['name'])
+    filename = f"ebay_bulk_{safe_name}.xlsx"
 
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         ebay_df.to_excel(writer, index=False, sheet_name='eBay Bulk Upload')
 
-        # 컬럼 너비 자동 조정
         worksheet = writer.sheets['eBay Bulk Upload']
         for column in worksheet.columns:
             max_length = 0
             column_letter = column[0].column_letter
             for cell in column:
                 try:
-                    if len(str(cell.value)) > max_length:
+                    if cell.value is not None and len(str(cell.value)) > max_length:
                         max_length = len(str(cell.value))
-                except:
+                except Exception:
                     pass
             adjusted_width = min(max_length + 2, 50)
             worksheet.column_dimensions[column_letter].width = adjusted_width
@@ -143,7 +153,6 @@ def convert_to_ebay_variations(bulk_df, category_map, user):
     """Bulk 데이터를 이베이 베리에이션 형식으로 변환"""
     ebay_rows = []
 
-    # PSKU로 그룹핑
     grouped = bulk_df.groupby('PSKU', sort=False)
 
     for psku, group in grouped:
@@ -151,7 +160,6 @@ def convert_to_ebay_variations(bulk_df, category_map, user):
         if not psku:
             continue
 
-        # 그룹 내 첫 번째 행에서 공통 정보 추출
         first_row = group.iloc[0]
         product_name = str(first_row.get('Product Name', '')).strip()
         category_id = str(first_row.get('Categoery ID', '')).strip()
@@ -159,27 +167,21 @@ def convert_to_ebay_variations(bulk_df, category_map, user):
         brand = str(first_row.get('BRAND', '')).strip()
         index_value = str(first_row.get('INDEX', '0')).strip()
 
-        # CAT 탭에서 카테고리 정보 조회
         cat_info = category_map.get(category_id, {})
 
-        # Category Name 백업 (Bulk에 없으면 CAT에서)
         if not category_name and cat_info:
             category_name = cat_info.get('path', '')
 
-        # Condition ID 매핑 (CAT 탭 C열 값 사용)
         condition_id = cat_info.get('condition', '1000-New')
 
-        # 모든 자식의 OPTION 값 수집 (세미콜론으로 병합)
         all_options = []
         for _, child in group.iterrows():
             option = str(child.get('OPTION', '')).strip()
             if option:
                 all_options.append(option)
 
-        # ✅ 변경: Relationship details를 "OPTIONS=옵션1;옵션2;..." 형식으로 고정
         relationship_details = f"OPTIONS={';'.join(all_options)}" if all_options else ''
 
-        # 1. 부모 행 생성 (Add)
         parent_row = create_parent_row(
             psku=psku,
             product_name=product_name,
@@ -194,7 +196,6 @@ def convert_to_ebay_variations(bulk_df, category_map, user):
         )
         ebay_rows.append(parent_row)
 
-        # 2. 자식 행들 생성 (Variation)
         for _, child_data in group.iterrows():
             child_row = create_child_row(child_data, user)
             ebay_rows.append(child_row)
@@ -202,12 +203,10 @@ def convert_to_ebay_variations(bulk_df, category_map, user):
     return ebay_rows
 
 
-
 def create_parent_row(psku, product_name, category_id, category_name, brand, condition_id,
                       relationship_details, first_price, index_value, user):
     """부모 행 생성 - INDEX 기반 다중 이미지 URL 생성"""
 
-    # INDEX 기반 다중 이미지 URL 생성
     parent_image_urls = generate_parent_image_urls(psku, index_value, user)
 
     parent = {
@@ -222,10 +221,10 @@ def create_parent_row(psku, product_name, category_id, category_name, brand, con
         'P:UPC': '',
         'P:EPID': '',
         'Start price': first_price,
-        'Quantity': str(user.get('default_quantity', 999)),  # 사용자 설정값 적용
-        'Item photo URL': parent_image_urls,  # 파이프(|) 구분 다중 URL
+        'Quantity': str(user.get('default_quantity', 999)),
+        'Item photo URL': parent_image_urls,
         'VideoID': '',
-        'Condition ID': condition_id,  # CAT 탭 C열에서 매핑
+        'Condition ID': condition_id,
         'Description': user.get('default_description', ''),
         'Format': 'FixedPrice',
         'Duration': 'GTC',
@@ -246,13 +245,12 @@ def create_parent_row(psku, product_name, category_id, category_name, brand, con
         'Returns within option': '',
         'Refund option': '',
         'Return shipping cost paid by': '',
-        'Shipping profile name': '',
+        'Shipping profile name': user.get('shipping_profile_name', ''),
         'Return profile name': user.get('return_profile_name', ''),
         'Payment profile name': user.get('payment_profile_name', ''),
         'ProductCompliancePolicyID': '',
         'Regional ProductCompliancePolicies': '',
         'C:Brand': brand
-        # AO열(C:Brand)에서 종료
     }
 
     return parent
@@ -265,10 +263,8 @@ def create_child_row(row, user):
     option = str(row.get('OPTION', '')).strip()
     price = clean_price(row.get('PRICE', '0'))
 
-    # ✅ 변경: Relationship details를 "OPTIONS=옵션값" 형식으로 고정
     relationship_details = f"OPTIONS={option}" if option else ''
 
-    # 자식 이미지 URL: "옵션명=이미지URL" 형식 (기존 로직 유지)
     base_image_url = generate_image_url(sku, user)
     child_image_url = f"{option}={base_image_url}" if option and base_image_url else base_image_url
 
@@ -279,7 +275,7 @@ def create_child_row(row, user):
         'Category name': '',
         'Title': '',
         'Relationship': 'Variation',
-        'Relationship details': relationship_details,  # ✅ 변경된 형식 적용
+        'Relationship details': relationship_details,
         'Schedule Time': '',
         'P:UPC': '',
         'P:EPID': '',
@@ -319,51 +315,45 @@ def create_child_row(row, user):
     return child
 
 
-
 def generate_parent_image_urls(psku, index_value, user):
     """INDEX 기반 부모 상품 다중 이미지 URL 생성 - 샵코드 적용"""
 
     if not psku or not user.get('image_domain'):
         return ""
 
-    # ✅ 샵코드 가져오기
-    shop_code = user.get('shop_code', '').strip()
+    shop_code = str(user.get('shop_code', '')).strip()
 
-    # INDEX 값 정제 (숫자만 추출)
     try:
-        index_num = int(re.sub(r'[^\d]', '', str(index_value))) if index_value else 0
+        only_digits = re.sub(r'[^\d]', '', str(index_value)) if index_value else ''
+        index_num = int(only_digits) if only_digits else 0
     except ValueError:
         index_num = 0
 
-    # 이미지 URL 리스트 생성
     image_urls = []
 
-    # ✅ 1. 첫 번째 이미지: PSKU_C_샵코드 형식으로 변경
+    # 첫 번째 이미지
     if shop_code:
         first_image_sku = f"{psku}_C_{shop_code}"
         first_image_url = generate_image_url(first_image_sku, user)
         if first_image_url:
             image_urls.append(first_image_url)
     else:
-        # 샵코드가 없으면 기존 방식 유지 (하위 호환성)
         base_url = generate_image_url(psku, user)
         if base_url:
             image_urls.append(base_url)
 
-    # 2. 추가 이미지 (INDEX 개수만큼): PSKU_D1, PSKU_D2, ... (기존 로직 유지)
+    # 추가 이미지
     for i in range(1, index_num + 1):
         sub_sku = f"{psku}_D{i}"
         sub_url = generate_image_url(sub_sku, user)
         if sub_url:
             image_urls.append(sub_url)
 
-    # 3. 파이프(|)로 연결 (이베이 공식 구분자)
     return '|'.join(image_urls)
 
 
-
 def generate_image_url(sku, user):
-    """SKU 기반 이미지 URL 생성 (기존 함수 유지)"""
+    """SKU 기반 이미지 URL 생성"""
     if not sku or not user.get('image_domain'):
         return ""
 
@@ -392,10 +382,8 @@ def validate_ebay_data(ebay_df, category_map):
     if len(ebay_df) == 0:
         return ["데이터가 없습니다."]
 
-    # Add 행 검증
     add_rows = ebay_df[ebay_df['*Action(SiteID=US|Country=KR|Currency=USD|Version=1193)'] == 'Add']
 
-    # 필수 필드 체크
     required_fields = ['Custom label (SKU)', 'Category ID', 'Category name', 'Title', 'Start price', 'Condition ID']
 
     for idx, row in add_rows.iterrows():
@@ -403,14 +391,14 @@ def validate_ebay_data(ebay_df, category_map):
             if not str(row.get(field, '')).strip():
                 errors.append(f"PSKU 행 {idx + 2}: {field} 누락")
 
-    # CAT 탭 카테고리 ID 검증
     if category_map:
-        invalid_cats = add_rows[~add_rows['Category ID'].isin(category_map.keys()) & (add_rows['Category ID'] != '')]
+        invalid_cats = add_rows[
+            ~add_rows['Category ID'].isin(category_map.keys()) & (add_rows['Category ID'] != '')
+        ]
         if len(invalid_cats) > 0:
             unique_invalid = invalid_cats['Category ID'].unique()[:5]
             errors.append(f"⚠️ CAT 탭에 없는 카테고리 ID: {', '.join(map(str, unique_invalid))}")
 
-    # Variation 행 검증
     var_rows = ebay_df[ebay_df['Relationship'] == 'Variation']
     for idx, row in var_rows.iterrows():
         if not str(row.get('Custom label (SKU)', '')).strip():
@@ -422,7 +410,7 @@ def validate_ebay_data(ebay_df, category_map):
 
 
 def get_ebay_column_order():
-    """이베이 표준 컬럼 순서 - AO열(C:Brand)까지만"""
+    """이베이 표준 컬럼 순서"""
     return [
         '*Action(SiteID=US|Country=KR|Currency=USD|Version=1193)',
         'Custom label (SKU)',
