@@ -451,4 +451,3 @@ def get_ebay_column_order():
         'Regional ProductCompliancePolicies',
         'C:Brand'
     ]
-}
