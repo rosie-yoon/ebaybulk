@@ -218,7 +218,6 @@ def create_parent_row(psku, product_name, category_id, category_name, brand, con
         'Relationship': '',
         'Relationship details': relationship_details,
         'Schedule Time': '',
-        'P:UPC': '',
         'P:EPID': '',
         'Start price': first_price,
         'Quantity': str(user.get('default_quantity', 999)),
@@ -277,7 +276,6 @@ def create_child_row(row, user):
         'Relationship': 'Variation',
         'Relationship details': relationship_details,
         'Schedule Time': '',
-        'P:UPC': '',
         'P:EPID': '',
         'Start price': price,
         'Quantity': str(user.get('default_quantity', 999)),
@@ -410,7 +408,7 @@ def validate_ebay_data(ebay_df, category_map):
 
 
 def get_ebay_column_order():
-    """이베이 표준 컬럼 순서"""
+    """이베이 표준 컬럼 순서 - P:UPC 제거 버전"""
     return [
         '*Action(SiteID=US|Country=KR|Currency=USD|Version=1193)',
         'Custom label (SKU)',
@@ -420,7 +418,6 @@ def get_ebay_column_order():
         'Relationship',
         'Relationship details',
         'Schedule Time',
-        'P:UPC',
         'P:EPID',
         'Start price',
         'Quantity',
@@ -454,3 +451,4 @@ def get_ebay_column_order():
         'Regional ProductCompliancePolicies',
         'C:Brand'
     ]
+}
