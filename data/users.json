@@ -29,7 +29,7 @@
     "id": 3,
     "name": "옹희",
     "google_sheet_id": "1pOwgjdLxu6GO9YkzLt4BX9JIIABPiUoQX5AFtA8iSDE",
-    "image_domain": "https://unisiashop.com/ebay",
+    "image_domain": "https://unisiashop.com/ebay/OH",
     "image_url_pattern": "/{sku}.jpg",
     "shop_code": "OH",
     "default_quantity": 5,
