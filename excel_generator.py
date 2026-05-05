@@ -18,6 +18,10 @@ def get_google_sheets_client():
             creds_dict = dict(st.secrets["gcp_service_account"])
             if "private_key" in creds_dict:
                 pk = creds_dict["private_key"]
+                # 디버그 출력
+                print(f"[DEBUG] private_key 앞 50자: {repr(pk[:50])}")
+                print(f"[DEBUG] \\n 포함 여부: {'\\\\n' in pk}")
+                print(f"[DEBUG] 실제줄바꿈 포함 여부: {chr(10) in pk}")
                 creds_dict["private_key"] = pk.replace("\\n", "\n")
             allowed_keys = {
                 "type", "project_id", "private_key_id", "private_key",
