@@ -14,36 +14,26 @@ SCOPES = ['https://www.googleapis.com/auth/spreadsheets.readonly']
 def get_google_sheets_client():
     """Google Sheets API 클라이언트 생성 - 로컬/클라우드 호환"""
     try:
-        # 1) 먼저 로컬 파일이 있으면 그걸 우선 사용
-        if os.path.exists("service_account.json"):
-            creds = Credentials.from_service_account_file(
-                "service_account.json",
-                scopes=SCOPES
-            )
-            return gspread.authorize(creds)
-
-        # 2) 로컬 파일이 없으면 Streamlit secrets 사용 시도
-        try:
+        if hasattr(st, 'secrets') and 'gcp_service_account' in st.secrets:
             creds_dict = dict(st.secrets["gcp_service_account"])
-
             if "private_key" in creds_dict:
-                creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
-
-            creds = Credentials.from_service_account_info(
-                creds_dict,
-                scopes=SCOPES
-            )
-            return gspread.authorize(creds)
-
-        except Exception:
-            raise Exception(
-                "service_account.json 파일이 없고, Streamlit secrets의 "
-                "'gcp_service_account' 설정도 없습니다."
-            )
-
+                pk = creds_dict["private_key"]
+                creds_dict["private_key"] = pk.replace("\\n", "\n")
+            allowed_keys = {
+                "type", "project_id", "private_key_id", "private_key",
+                "client_email", "client_id", "auth_uri", "token_uri",
+                "auth_provider_x509_cert_url", "client_x509_cert_url"
+            }
+            creds_dict = {k: v for k, v in creds_dict.items() if k in allowed_keys}
+            creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
+            client = gspread.authorize(creds)
+            return client
+        else:
+            creds = Credentials.from_service_account_file('service_account.json', scopes=SCOPES)
+            client = gspread.authorize(creds)
+            return client
     except Exception as e:
         raise Exception(f"Google Sheets API 인증 실패: {str(e)}")
-
 
 def read_bulk_and_cat_tabs(sheet_id):
     """Bulk 탭과 CAT 탭 읽기 - INDEX 컬럼 포함"""
@@ -219,8 +209,8 @@ def create_parent_row(psku, product_name, category_id, category_name, brand, con
         'Relationship details': relationship_details,
         'Schedule Time': '',
         'P:EPID': '',
-        'Start price': first_price,
-        'Quantity': str(user.get('default_quantity', 999)),
+        'Start price': '',
+        'Quantity': '',
         'Item photo URL': parent_image_urls,
         'VideoID': '',
         'Condition ID': condition_id,
@@ -382,7 +372,7 @@ def validate_ebay_data(ebay_df, category_map):
 
     add_rows = ebay_df[ebay_df['*Action(SiteID=US|Country=KR|Currency=USD|Version=1193)'] == 'Add']
 
-    required_fields = ['Custom label (SKU)', 'Category ID', 'Category name', 'Title', 'Start price', 'Condition ID']
+    required_fields = ['Custom label (SKU)', 'Category ID', 'Category name', 'Title', 'Condition ID']
 
     for idx, row in add_rows.iterrows():
         for field in required_fields:
